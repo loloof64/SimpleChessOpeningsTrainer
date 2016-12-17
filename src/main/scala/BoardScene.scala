@@ -17,13 +17,12 @@
   */
 
 import scalafx.scene.Scene
-import scalafx.scene.paint.Color._
 
 class BoardScene(cellsSize: Int) extends Scene {
 
   val dimension = 9*cellsSize
+  val boardCanvas = new BoardCanvas(cellsSize)
 
-  fill = LightPink
-  getChildren.add(new BoardGroup(cellsSize))
+  getChildren.add(boardCanvas)
 
 }
