@@ -15,17 +15,15 @@
   *You should have received a copy of the GNU General Public License
   *along with this program.  If not, see <http://www.gnu.org/licenses/>.
   */
-import scalafx.application.JFXApp
 
-object ApplicationEntry extends JFXApp {
+import scalafx.scene.Scene
+import scalafx.scene.paint.Color._
 
-  val sceneInst = new BoardScene(50)
+class BoardScene(cellsSize: Int) extends Scene {
 
-  stage = new JFXApp.PrimaryStage {
-    title.value = "Simple chess openings trainer"
-    width = sceneInst.dimension
-    height = sceneInst.dimension + 40
-    scene = sceneInst
-  }
+  val dimension = 9*cellsSize
+
+  fill = LightPink
+  getChildren.add(new BoardGroup(cellsSize))
 
 }
