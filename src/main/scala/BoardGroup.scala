@@ -29,7 +29,9 @@ class BoardGroup(cellSize: Int)  extends Group {
 
   private var relatedGame = new Game
 
-  val textFont = Font("Sans-Serif", FontWeight.ExtraBold, cellSize * 0.3)
+  private val reversed = false
+
+  private val textFont = Font("Sans-Serif", FontWeight.ExtraBold, cellSize * 0.3)
 
   private def addBackground() = {
     val background = new Rectangle {
@@ -60,8 +62,9 @@ class BoardGroup(cellSize: Int)  extends Group {
   }
 
   private def addCoords() = {
+    val letters = if (reversed) "ABCDEFGH".reverse else "ABCDEFGH"
     for {
-      (letter, col) <- "ABCDEFGH".zipWithIndex
+      (letter, col) <- letters.zipWithIndex
     } {
       children.add(new Text(cellSize * (0.9 + col), cellSize * 0.4, s"$letter") {
         font = textFont
@@ -71,8 +74,9 @@ class BoardGroup(cellSize: Int)  extends Group {
       }.delegate)
     }
 
+    val numbers = if (reversed) "12345678" else "12345678".reverse
     for {
-      (digit, line) <- "87654321".zipWithIndex
+      (digit, line) <- numbers.zipWithIndex
     } {
       children.add(new Text(cellSize * 0.1, cellSize * (1.2 + line), s"$digit") {
         font = textFont
@@ -89,8 +93,8 @@ class BoardGroup(cellSize: Int)  extends Group {
       col <- 0 until 8
       piece = relatedGame.getPosition.getStone(row*8 + col)
     } if (piece != Chess.NO_PIECE) {
-      val abs = cellSize * (0.5 + col)
-      val ord = cellSize * (7.5 - row)
+      val abs = cellSize * (if (reversed) 7.5-col else 0.5 + col)
+      val ord = cellSize * (if (reversed) 0.5+row else 7.5 - row)
       val pictureRef = piece match {
         case Chess.WHITE_PAWN => "chess_pl.png"
         case Chess.WHITE_KNIGHT => "chess_nl.png"
