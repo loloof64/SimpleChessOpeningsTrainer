@@ -17,7 +17,6 @@
   */
 
 
-import javafx.event.EventHandler
 import javafx.scene.input.{DragEvent, MouseEvent}
 
 import chesspresso.Chess
@@ -100,6 +99,7 @@ class BoardCanvas(cellSize: Int)  extends Canvas(cellSize * 9, cellSize * 9) {
       dragBoard.setContent(content)
 
       draggingStartCell = Some((cellX, cellY))
+      update()
     }
 
     event.consume()
@@ -117,10 +117,13 @@ class BoardCanvas(cellSize: Int)  extends Canvas(cellSize * 9, cellSize * 9) {
       row <- 0 until 8
       col <- 0 until 8
       whiteCell = (row+col)%2 != 0
-      cellColor = if (whiteCell) LightYellow else SaddleBrown
+      cellColor = draggingStartCell match {
+        case Some(cell) => if (cell == (col, row)) Green else if (whiteCell) LightYellow else SaddleBrown
+        case None => if (whiteCell) LightYellow else SaddleBrown
+      }
     } {
       gc.setFill(cellColor)
-      gc.fillRect(cellSize*(0.5+col), cellSize*(0.5+row), cellSize, cellSize)
+      gc.fillRect(cellSize*(0.5+col), cellSize*(7.5-row), cellSize, cellSize)
     }
   }
 
