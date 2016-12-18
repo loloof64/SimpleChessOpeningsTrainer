@@ -19,8 +19,8 @@ package com.loloof64.scala.simple_chess_openings_trainer
 
 import java.awt.event.{MouseAdapter, MouseEvent, MouseMotionAdapter}
 import java.awt._
-import java.io.{File, FileInputStream}
-import java.util.{Timer, TimerTask}
+import java.io.{File, FileInputStream, FileNotFoundException, FileOutputStream}
+import java.util.{Properties, Timer, TimerTask}
 import javax.imageio.ImageIO
 import javax.swing._
 import javax.swing.filechooser.FileNameExtensionFilter
@@ -65,6 +65,33 @@ class BoardPane(val cellSize: Int) extends JPanel{
     drawCoords(g)
     drawPlayerTurn(g)
     drawPieces(g)
+  }
+
+  private def loadPreferences() : Unit = {
+    val userHome = new File(System.getProperty("user.home"))
+    val preferencesFile = new File(userHome, "SimpleChessOpeningsTrainer.properties")
+    val properties = new Properties()
+
+    try {
+      val input = new FileInputStream(preferencesFile)
+      properties.load(input)
+
+      val currentFolderProp = properties.getProperty(BoardPane.CurrentFolderPropertyKey)
+      currentChooserFolder = if (currentFolderProp != null) new File(currentFolderProp) else null
+    } catch {
+      case _:FileNotFoundException => currentChooserFolder = null
+    }
+
+  }
+
+  private def savePreferences() : Unit = {
+    val userHome = new File(System.getProperty("user.home"))
+    val preferencesFile = new File(userHome, "SimpleChessOpeningsTrainer.properties")
+    val properties = new Properties()
+    val output = new FileOutputStream(preferencesFile)
+
+    properties.setProperty(BoardPane.CurrentFolderPropertyKey, currentChooserFolder.getAbsolutePath)
+    properties.store(output, null)
   }
 
   private def removeListeners() = {
@@ -139,6 +166,7 @@ class BoardPane(val cellSize: Int) extends JPanel{
     val dialogResult = fileChooser.showOpenDialog(this)
     if (dialogResult == JFileChooser.APPROVE_OPTION) {
       currentChooserFolder = fileChooser.getCurrentDirectory
+      savePreferences()
       fileChooser.getSelectedFile
     }
     else throw new CancelledFileChooserException
@@ -447,6 +475,8 @@ class BoardPane(val cellSize: Int) extends JPanel{
     else throw new IllegalMoveException("")
   }
 
+  loadPreferences()
+
   private var dragStarted = false
   private var draggedPiece : Option[Int] = None
   private var dragStartCoord : Option[(Int, Int)] = None
@@ -466,6 +496,10 @@ class BoardPane(val cellSize: Int) extends JPanel{
 
   private var currentChooserFolder: File = _
 
+}
+
+object BoardPane {
+  val CurrentFolderPropertyKey = "CurrentFolder"
 }
 
 class WaitingForPromotionPieceChooseException extends Exception
