@@ -50,8 +50,8 @@ class BoardCanvas(cellSize: Int)  extends Canvas(cellSize * 9, cellSize * 9) {
     val fromCell = (move.getFromSqi % 8, move.getFromSqi / 8)
     val toCell = (move.getToSqi % 8, move.getToSqi / 8)
 
-    val fromCoords = ((cellSize * (fromCell._1 + 0.5)).toInt, (cellSize * (7.5 - fromCell._2)).toInt)
-    val toCoords = ((cellSize * (toCell._1 + 0.5)).toInt, (cellSize * (7.5 - toCell._2)).toInt)
+    val fromCoords = cellCoordsToAbsoluteCoords(fromCell)
+    val toCoords = cellCoordsToAbsoluteCoords(toCell)
 
     val timeline = Timeline(Seq(
       KeyFrame(Duration(0), values = Set(KeyValue(animXProperty, fromCoords._1), KeyValue(animYProperty, fromCoords._2))),
@@ -75,6 +75,16 @@ class BoardCanvas(cellSize: Int)  extends Canvas(cellSize * 9, cellSize * 9) {
 
     timer.start()
     timeline.play()
+  }
+
+  private def cellCoordsToAbsoluteCoords(cell: (Int, Int)) = {
+    if (reversed) ((cellSize * (7.5-cell._1)).toInt, (cellSize * (0.5+cell._2)).toInt)
+    else ((cellSize * (0.5+cell._1)).toInt, (cellSize * (7.5-cell._2)).toInt)
+  }
+
+  private def absoluteCoordsToCellCoords(coords: (Int, Int)) = {
+    if (reversed) (7 - ((coords._1 - cellSize*0.5)/cellSize).toInt, ((coords._2 - cellSize*0.5)/cellSize).toInt)
+    else (((coords._1 - cellSize*0.5)/cellSize).toInt, 7 - ((coords._2 - cellSize*0.5)/cellSize).toInt)
   }
 
   def openFile() : Unit = {
@@ -107,6 +117,8 @@ class BoardCanvas(cellSize: Int)  extends Canvas(cellSize * 9, cellSize * 9) {
     }
 
     relatedGame.gotoStart()
+
+    if (this.playerColor == Chess.BLACK) reversed = true
     if (relatedGame.getPosition.getToPlay != this.playerColor){
       makeComputerPlay()
     }
@@ -116,7 +128,7 @@ class BoardCanvas(cellSize: Int)  extends Canvas(cellSize * 9, cellSize * 9) {
 
   private var relatedGame = new Game
 
-  private val reversed = false
+  private var reversed = false
 
   private var draggingStartCell:Option[(Int, Int)] = None
   private var animationStartCell:Option[(Int, Int)] = None
@@ -128,8 +140,7 @@ class BoardCanvas(cellSize: Int)  extends Canvas(cellSize * 9, cellSize * 9) {
 
   private def activateDndCallbacks() = {
     onDragOver = (event: DragEvent) => {
-      val cellX = ((event.getSceneX - 0.5 * cellSize) / cellSize).toInt
-      val cellY = 7 - ((event.getSceneY - 0.5 * cellSize) / cellSize).toInt
+      val (cellX, cellY) = absoluteCoordsToCellCoords((event.getSceneX.toInt, event.getSceneY.toInt))
       val eventInBounds = cellX >= 0 && cellX <= 7 && cellY >= 0 && cellY <= 7
       if (eventInBounds && event.getDragboard.hasContent(BoardCanvas.DataFormat)) {
         event.acceptTransferModes(TransferMode.Move)
@@ -141,8 +152,7 @@ class BoardCanvas(cellSize: Int)  extends Canvas(cellSize * 9, cellSize * 9) {
     onDragDropped = (event: DragEvent) => {
       val dragBoard = event.getDragboard
       val (startFile, startRank) = draggingStartCell.get
-      val cellX = ((event.getSceneX - 0.5 * cellSize) / cellSize).toInt
-      val cellY = 7 - ((event.getSceneY - 0.5 * cellSize) / cellSize).toInt
+      val (cellX, cellY) = absoluteCoordsToCellCoords((event.getSceneX.toInt, event.getSceneY.toInt))
       val eventInBounds = cellX >= 0 && cellX <= 7 && cellY >= 0 && cellY <= 7
 
       val success = if (eventInBounds) {
@@ -172,8 +182,7 @@ class BoardCanvas(cellSize: Int)  extends Canvas(cellSize * 9, cellSize * 9) {
     }
 
     onDragDetected = (event: MouseEvent) => {
-      val cellX = ((event.getSceneX - 0.5 * cellSize) / cellSize).toInt
-      val cellY = 7 - ((event.getSceneY - 0.5 * cellSize) / cellSize).toInt
+      val (cellX, cellY) = absoluteCoordsToCellCoords((event.getSceneX.toInt, event.getSceneY.toInt))
       val eventInBounds = cellX >= 0 && cellX <= 7 && cellY >= 0 && cellY <= 7
 
       if (eventInBounds) {
@@ -217,8 +226,9 @@ class BoardCanvas(cellSize: Int)  extends Canvas(cellSize * 9, cellSize * 9) {
         case None => if (whiteCell) LightYellow else SaddleBrown
       }
     } {
+      val (absX, absY) = cellCoordsToAbsoluteCoords((col , row))
       gc.setFill(cellColor)
-      gc.fillRect(cellSize*(0.5+col), cellSize*(7.5-row), cellSize, cellSize)
+      gc.fillRect(absX, absY, cellSize, cellSize)
     }
   }
 
@@ -272,12 +282,11 @@ class BoardCanvas(cellSize: Int)  extends Canvas(cellSize * 9, cellSize * 9) {
       col <- 0 until 8
       piece = relatedGame.getPosition.getStone(row*8 + col)
     } if (piece != Chess.NO_PIECE) {
-      val abs = (cellSize * (if (reversed) 7.5-col else 0.5 + col)).toInt
-      val ord = (cellSize * (if (reversed) 0.5+row else 7.5 - row)).toInt
+      val (absX, absY) = cellCoordsToAbsoluteCoords((col , row))
       animationStartCell match {
         case Some(startCell) => if (startCell != (col, row))
-          drawPiece(abs, ord, piece)
-        case None => drawPiece(abs, ord, piece)
+          drawPiece(absX, absY, piece)
+        case None => drawPiece(absX, absY, piece)
       }
     }
 
