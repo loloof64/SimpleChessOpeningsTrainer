@@ -19,6 +19,7 @@ package com.loloof64.scala.simple_chess_openings_trainer
 
 import java.awt.event.{MouseAdapter, MouseEvent, MouseMotionAdapter}
 import java.awt._
+import java.awt.geom.AffineTransform
 import java.io.{File, FileInputStream, FileNotFoundException, FileOutputStream}
 import java.util.{Properties, Timer, TimerTask}
 import javax.imageio.ImageIO
@@ -41,7 +42,9 @@ class BoardPane(val cellSize: Int) extends JPanel{
       stream.close()
       relatedGame.gotoStart()
 
-      if (playerColor == Chess.BLACK) reversed = true
+      moveToHighlight = None
+
+      reversed = if (playerColor == Chess.BLACK) true else false
       if (relatedGame.getPosition.getToPlay == playerColor) {
         addListeners()
       } else {
@@ -65,6 +68,7 @@ class BoardPane(val cellSize: Int) extends JPanel{
     drawCoords(g)
     drawPlayerTurn(g)
     drawPieces(g)
+    drawHighlightedMove(g)
   }
 
   private def loadPreferences() : Unit = {
@@ -136,6 +140,7 @@ class BoardPane(val cellSize: Int) extends JPanel{
 
       val timer = new Timer
       animationPieceStartCell = Some(fromCell)
+      animationPieceEndCell = Some(toCell)
       animationPiece = Some(relatedGame.getPosition.getStone(fromCell._1 + 8*fromCell._2))
       animationStarted = true
       timer.scheduleAtFixedRate(timerTask, 0.toLong, 50)
@@ -143,7 +148,13 @@ class BoardPane(val cellSize: Int) extends JPanel{
   }
 
   private def manageTheAfterComputerMove(): Unit = {
+
+    val oldAnimationPieceStartCell = animationPieceStartCell
+    val oldAnimationPieceEndCell = animationPieceEndCell
+
     animationPieceLocation = None
+    animationPieceStartCell = None
+    animationPieceEndCell = None
     animationPiece = None
     animationStarted = false
 
@@ -151,6 +162,9 @@ class BoardPane(val cellSize: Int) extends JPanel{
     repaint()
 
     if (relatedGame.getPosition.getToPlay == playerColor){
+      moveToHighlight = Some(oldAnimationPieceStartCell.get._1, oldAnimationPieceStartCell.get._2,
+        oldAnimationPieceEndCell.get._1, oldAnimationPieceEndCell.get._2)
+      repaint()
       addListeners()
     }
     else {
@@ -289,6 +303,43 @@ class BoardPane(val cellSize: Int) extends JPanel{
     }
   }
 
+  private def drawHighlightedMove(g: Graphics): Unit = {
+    moveToHighlight match {
+      case Some((startFile, startRank, endFile, endRank)) =>
+        val (absoluteStart) = cellCoordsToAbsoluteCoords((startFile, startRank))
+        val (absoluteEnd) = cellCoordsToAbsoluteCoords((endFile, endRank))
+        val absStart = (absoluteStart._1 + cellSize * 0.5).toInt
+        val ordStart = (absoluteStart._2 + cellSize * 0.5).toInt
+        val absEnd = (absoluteEnd._1 + cellSize * 0.5).toInt
+        val ordEnd = (absoluteEnd._2 + cellSize * 0.5).toInt
+        val oldStroke = g.asInstanceOf[Graphics2D].getStroke
+        g.asInstanceOf[Graphics2D].setStroke(new BasicStroke(5))
+        g.setColor(Color.BLUE)
+        g.drawLine(absStart, ordStart, absEnd, ordEnd)
+
+        val arrowHead = new Polygon()
+        val len = (cellSize * 0.2).toInt
+        arrowHead.addPoint(-len, 0)
+        arrowHead.addPoint(len, 0)
+        arrowHead.addPoint(0, len)
+
+        val tx = new AffineTransform()
+        tx.setToIdentity()
+        val angle = Math.atan2(absEnd - absStart, ordEnd - ordStart)
+        tx.translate(absEnd, ordEnd)
+        tx.rotate(angle)
+
+
+        val oldTransform = g.asInstanceOf[Graphics2D].getTransform
+        g.asInstanceOf[Graphics2D].setTransform(tx)
+        g.fillPolygon(arrowHead)
+        g.asInstanceOf[Graphics2D].setTransform(oldTransform)
+
+        g.asInstanceOf[Graphics2D].setStroke(oldStroke)
+      case None =>
+    }
+  }
+
   private def cellCoordsToAbsoluteCoords(cell: (Int, Int)) : (Int, Int) = {
     if (reversed) ((cellSize * (7.5-cell._1)).toInt, (cellSize * (0.5+cell._2)).toInt)
     else ((cellSize * (0.5+cell._1)).toInt, (cellSize * (7.5-cell._2)).toInt)
@@ -304,7 +355,9 @@ class BoardPane(val cellSize: Int) extends JPanel{
       case Some((sqiFrom, sqiTo, isCapturing)) =>
         val move = Move.getPawnMove(sqiFrom, sqiTo, isCapturing, piece)
         pendingPromotionInfo = None
+        moveToHighlight = None
         relatedGame.getPosition.doMove(move)
+        repaint()
       case None =>
     }
   }
@@ -378,6 +431,8 @@ class BoardPane(val cellSize: Int) extends JPanel{
         try {
           val move = validateMove(dragStartCoord.get._1 +8*dragStartCoord.get._2, file + 8*rank)
           relatedGame.getPosition.doMove(move)
+          moveToHighlight = None
+          repaint()
         } catch {
           case _:IllegalMoveException =>
           case _:WaitingForPromotionPieceChooseException => askForPromotionMove(relatedGame.getPosition.getToPlay)
@@ -486,6 +541,9 @@ class BoardPane(val cellSize: Int) extends JPanel{
   private var animationPiece : Option[Int] = None
   private var animationPieceLocation : Option[(Int, Int)] = None
   private var animationPieceStartCell : Option[(Int, Int)] = None
+  private var animationPieceEndCell : Option[(Int, Int)] = None
+
+  private var moveToHighlight : Option[(Int, Int, Int, Int)] = None
 
   private var reversed = false
   private var playerColor = Chess.NOBODY
