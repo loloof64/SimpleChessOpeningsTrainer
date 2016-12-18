@@ -18,97 +18,187 @@
 
 
 
+import java.io.FileInputStream
+import javafx.beans.property.SimpleDoubleProperty
 import javafx.scene.input.{DragEvent, MouseEvent}
 
 import chesspresso.Chess
 import chesspresso.game.Game
 import chesspresso.move.{IllegalMoveException, Move}
+import chesspresso.pgn.PGNReader
 
+import scalafx.animation.{AnimationTimer, KeyFrame, KeyValue, Timeline}
 import scalafx.scene.Scene
 import scalafx.scene.canvas.Canvas
-import scalafx.scene.control.{Button, Dialog, Label}
+import scalafx.scene.control.Alert.AlertType
+import scalafx.scene.control.{Alert, Button, ButtonType, Label}
 import scalafx.scene.image.{Image, ImageView}
 import scalafx.scene.input.{ClipboardContent, DataFormat, TransferMode}
 import scalafx.scene.layout.{HBox, VBox}
 import scalafx.scene.paint.Color._
 import scalafx.scene.text.{Font, FontWeight}
-import scalafx.stage.{Modality, Stage}
+import scalafx.stage.{FileChooser, Modality, Stage}
+import scalafx.util.Duration
 
 class BoardCanvas(cellSize: Int)  extends Canvas(cellSize * 9, cellSize * 9) {
 
-  private val relatedGame = new Game
+  private val animXProperty = new SimpleDoubleProperty()
+  private val animYProperty = new SimpleDoubleProperty()
+
+  private def makeComputerPlay() = {
+    val move = relatedGame.getNextMove
+    val fromCell = (move.getFromSqi % 8, move.getFromSqi / 8)
+    val toCell = (move.getToSqi % 8, move.getToSqi / 8)
+
+    val fromCoords = ((cellSize * (fromCell._1 + 0.5)).toInt, (cellSize * (7.5 - fromCell._2)).toInt)
+    val toCoords = ((cellSize * (toCell._1 + 0.5)).toInt, (cellSize * (7.5 - toCell._2)).toInt)
+
+    val timeline = Timeline(Seq(
+      KeyFrame(Duration(0), values = Set(KeyValue(animXProperty, fromCoords._1), KeyValue(animYProperty, fromCoords._2))),
+      KeyFrame(Duration(800), values = Set(KeyValue(animXProperty, toCoords._1), KeyValue(animYProperty, toCoords._2)))
+    ))
+
+    val timer = AnimationTimer { (now) =>
+      update()
+    }
+
+    animationStartCell = Some(fromCell)
+    animationMovedPiece = Some(relatedGame.getPosition.getStone(fromCell._1 + 8*fromCell._2))
+
+    timeline.setOnFinished { (event) =>
+      animationStartCell = None
+      animationMovedPiece = None
+      timer.stop()
+      relatedGame.getPosition.doMove(move)
+      update()
+    }
+
+    timer.start()
+    timeline.play()
+  }
+
+  def openFile() : Unit = {
+    val fileChooser = new FileChooser {
+      title = "Open a pgn"
+    }
+
+    val selectedFile = fileChooser.showOpenDialog(this.getScene.getWindow)
+    val fileStream = new FileInputStream(selectedFile)
+
+    val pgnReader = new PGNReader(fileStream, "currentFile")
+    relatedGame = pgnReader.parseGame()
+    fileStream.close()
+
+    val dialog = new Alert(AlertType.Confirmation)
+    dialog.setTitle("Player side")
+    dialog.setContentText("Choose your side")
+
+    val buttonWhite = new ButtonType("White")
+    val buttonBlack = new ButtonType("Black")
+    val buttonNobody = new ButtonType("Nobody")
+
+    dialog.getButtonTypes.setAll(buttonWhite, buttonBlack, buttonNobody)
+    val result = dialog.showAndWait()
+
+    this.playerColor = result.get match {
+      case `buttonWhite` => Chess.WHITE
+      case `buttonBlack` => Chess.BLACK
+      case `buttonNobody` => Chess.NOBODY
+    }
+
+    relatedGame.gotoStart()
+    if (relatedGame.getPosition.getToPlay != this.playerColor){
+      makeComputerPlay()
+    }
+  }
+
+  private var playerColor = Chess.NOBODY
+
+  private var relatedGame = new Game
 
   private val reversed = false
 
   private var draggingStartCell:Option[(Int, Int)] = None
+  private var animationStartCell:Option[(Int, Int)] = None
+  private var animationMovedPiece:Option[Int] = None
 
   private val textFont = Font("Sans-Serif", FontWeight.ExtraBold, cellSize * 0.3)
 
   private var pendingPromotionInfo : Option[(Int, Int, Boolean)] = None
 
-  onDragOver = (event: DragEvent) => {
-    val cellX = ((event.getSceneX - 0.5 * cellSize) / cellSize).toInt
-    val cellY = 7 - ((event.getSceneY - 0.5 * cellSize) / cellSize).toInt
-    val eventInBounds = cellX >= 0 && cellX <= 7 && cellY >= 0 && cellY <= 7
-    if (eventInBounds && event.getDragboard.hasContent(BoardCanvas.DataFormat)) {
-      event.acceptTransferModes(TransferMode.Move)
+  private def activateDndCallbacks() = {
+    onDragOver = (event: DragEvent) => {
+      val cellX = ((event.getSceneX - 0.5 * cellSize) / cellSize).toInt
+      val cellY = 7 - ((event.getSceneY - 0.5 * cellSize) / cellSize).toInt
+      val eventInBounds = cellX >= 0 && cellX <= 7 && cellY >= 0 && cellY <= 7
+      if (eventInBounds && event.getDragboard.hasContent(BoardCanvas.DataFormat)) {
+        event.acceptTransferModes(TransferMode.Move)
+      }
+
+      event.consume()
     }
 
-    event.consume()
-  }
+    onDragDropped = (event: DragEvent) => {
+      val dragBoard = event.getDragboard
+      val (startFile, startRank) = draggingStartCell.get
+      val cellX = ((event.getSceneX - 0.5 * cellSize) / cellSize).toInt
+      val cellY = 7 - ((event.getSceneY - 0.5 * cellSize) / cellSize).toInt
+      val eventInBounds = cellX >= 0 && cellX <= 7 && cellY >= 0 && cellY <= 7
 
-  onDragDropped = (event: DragEvent) => {
-    val dragBoard = event.getDragboard
-    val (startFile, startRank) = draggingStartCell.get
-    val cellX = ((event.getSceneX - 0.5 * cellSize) / cellSize).toInt
-    val cellY = 7 - ((event.getSceneY - 0.5 * cellSize) / cellSize).toInt
-    val eventInBounds = cellX >= 0 && cellX <= 7 && cellY >= 0 && cellY <= 7
-
-    val success = if (eventInBounds) {
-      if (dragBoard.hasContent(BoardCanvas.DataFormat)) try {
-        val realMove = validateMove(startFile + 8 * startRank, cellX + 8 * cellY)
-        relatedGame.getPosition.doMove(realMove)
-        true
-      } catch {
-        case _: IllegalMoveException => if (startFile != cellX || startRank != cellY) {
-          reactForIllegalMove()
-        }
-          false
-        case _: WaitingForPromotionPieceChooseException =>
-          askForPromotionPiece(relatedGame.getPosition.getToPlay)
+      val success = if (eventInBounds) {
+        if (dragBoard.hasContent(BoardCanvas.DataFormat)) try {
+          val realMove = validateMove(startFile + 8 * startRank, cellX + 8 * cellY)
+          relatedGame.getPosition.doMove(realMove)
           true
+        } catch {
+          case _: IllegalMoveException => if (startFile != cellX || startRank != cellY) {
+            reactForIllegalMove()
+          }
+            false
+          case _: WaitingForPromotionPieceChooseException =>
+            askForPromotionPiece(relatedGame.getPosition.getToPlay)
+            true
+        } else false
       } else false
-    } else false
 
-    pendingPromotionInfo = None
-    draggingStartCell = None
-    event.setDropCompleted(success)
-  }
-
-  onDragDone = (event: DragEvent) => {
-    update()
-    event.consume()
-  }
-
-  onDragDetected = (event: MouseEvent) => {
-    val cellX = ((event.getSceneX - 0.5 * cellSize) / cellSize).toInt
-    val cellY = 7 - ((event.getSceneY - 0.5 * cellSize) / cellSize).toInt
-    val eventInBounds = cellX >= 0 && cellX <= 7 && cellY >= 0 && cellY <= 7
-
-    if (eventInBounds) {
-      val dragBoard = startDragAndDrop(TransferMode.Move)
-
-      val content = new ClipboardContent()
-      val pieceInteger: java.lang.Integer = relatedGame.getPosition.getStone(cellX + 8 * cellY)
-      content.put(BoardCanvas.DataFormat, pieceInteger)
-      dragBoard.setContent(content)
-
-      draggingStartCell = Some((cellX, cellY))
-      update()
+      pendingPromotionInfo = None
+      draggingStartCell = None
+      event.setDropCompleted(success)
     }
 
-    event.consume()
+    onDragDone = (event: DragEvent) => {
+      update()
+      event.consume()
+    }
+
+    onDragDetected = (event: MouseEvent) => {
+      val cellX = ((event.getSceneX - 0.5 * cellSize) / cellSize).toInt
+      val cellY = 7 - ((event.getSceneY - 0.5 * cellSize) / cellSize).toInt
+      val eventInBounds = cellX >= 0 && cellX <= 7 && cellY >= 0 && cellY <= 7
+
+      if (eventInBounds) {
+        val dragBoard = startDragAndDrop(TransferMode.Move)
+
+        val content = new ClipboardContent()
+        val pieceInteger: java.lang.Integer = relatedGame.getPosition.getStone(cellX + 8 * cellY)
+        content.put(BoardCanvas.DataFormat, pieceInteger)
+        dragBoard.setContent(content)
+
+        draggingStartCell = Some((cellX, cellY))
+        update()
+      }
+
+      event.consume()
+    }
   }
+
+  private def removeDndCallbacks() = {
+    onDragOver = (event: DragEvent) => ()
+    onDragDropped = (event: DragEvent) => ()
+    onDragDone = (event: DragEvent) => ()
+    onDragDetected = (event: MouseEvent) => ()
+  }
+
 
   private def clear() : Unit = {
     val gc = this.getGraphicsContext2D
@@ -156,13 +246,8 @@ class BoardCanvas(cellSize: Int)  extends Canvas(cellSize * 9, cellSize * 9) {
   private def drawPieces() = {
 
     val gc = this.getGraphicsContext2D
-    for {
-      row <- 0 until 8
-      col <- 0 until 8
-      piece = relatedGame.getPosition.getStone(row*8 + col)
-    } if (piece != Chess.NO_PIECE) {
-      val abs = cellSize * (if (reversed) 7.5-col else 0.5 + col)
-      val ord = cellSize * (if (reversed) 0.5+row else 7.5 - row)
+
+    def drawPiece(abs:Int, ord:Int, piece: Int) = {
       val pictureRef = piece match {
         case Chess.WHITE_PAWN => "chess_pl.png"
         case Chess.WHITE_KNIGHT => "chess_nl.png"
@@ -180,6 +265,27 @@ class BoardCanvas(cellSize: Int)  extends Canvas(cellSize * 9, cellSize * 9) {
       }
 
       gc.drawImage(new Image(getClass.getResourceAsStream(pictureRef)), abs, ord, cellSize, cellSize)
+    }
+
+    for {
+      row <- 0 until 8
+      col <- 0 until 8
+      piece = relatedGame.getPosition.getStone(row*8 + col)
+    } if (piece != Chess.NO_PIECE) {
+      val abs = (cellSize * (if (reversed) 7.5-col else 0.5 + col)).toInt
+      val ord = (cellSize * (if (reversed) 0.5+row else 7.5 - row)).toInt
+      animationStartCell match {
+        case Some(startCell) => if (startCell != (col, row))
+          drawPiece(abs, ord, piece)
+        case None => drawPiece(abs, ord, piece)
+      }
+    }
+
+    animationStartCell match {
+      case Some(_) =>
+        drawPiece(animXProperty.doubleValue().toInt, animYProperty.doubleValue().toInt, animationMovedPiece.get)
+
+      case None =>
     }
   }
 

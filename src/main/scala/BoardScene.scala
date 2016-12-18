@@ -25,4 +25,6 @@ class BoardScene(cellsSize: Int) extends Scene {
 
   getChildren.add(boardCanvas)
 
+  def openFile() : Unit = boardCanvas.openFile()
+
 }

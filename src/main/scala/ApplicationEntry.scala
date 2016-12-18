@@ -15,6 +15,8 @@
   *You should have received a copy of the GNU General Public License
   *along with this program.  If not, see <http://www.gnu.org/licenses/>.
   */
+import chesspresso.Chess
+
 import scalafx.application.JFXApp
 
 object ApplicationEntry extends JFXApp {
@@ -27,5 +29,7 @@ object ApplicationEntry extends JFXApp {
     height = sceneInst.dimension + 40
     scene = sceneInst
   }
+
+  sceneInst.openFile()
 
 }
