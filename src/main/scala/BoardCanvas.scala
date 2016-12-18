@@ -17,17 +17,22 @@
   */
 
 
+
 import javafx.scene.input.{DragEvent, MouseEvent}
 
 import chesspresso.Chess
 import chesspresso.game.Game
 import chesspresso.move.{IllegalMoveException, Move}
 
+import scalafx.scene.Scene
 import scalafx.scene.canvas.Canvas
-import scalafx.scene.image.Image
+import scalafx.scene.control.{Button, Dialog, Label}
+import scalafx.scene.image.{Image, ImageView}
 import scalafx.scene.input.{ClipboardContent, DataFormat, TransferMode}
+import scalafx.scene.layout.{HBox, VBox}
 import scalafx.scene.paint.Color._
 import scalafx.scene.text.{Font, FontWeight}
+import scalafx.stage.{Modality, Stage}
 
 class BoardCanvas(cellSize: Int)  extends Canvas(cellSize * 9, cellSize * 9) {
 
@@ -259,6 +264,7 @@ class BoardCanvas(cellSize: Int)  extends Canvas(cellSize * 9, cellSize * 9) {
         val move = Move.getPawnMove(sqiFrom, sqiTo, isCapturing, pieceType)
         relatedGame.getPosition.doMove(move)
         pendingPromotionInfo = None
+        update()
       case None =>
     }
   }
@@ -268,7 +274,59 @@ class BoardCanvas(cellSize: Int)  extends Canvas(cellSize * 9, cellSize * 9) {
   }
 
   private def askForPromotionPiece(toPlay: Int) = {
+    val dialog = new Stage
+    dialog.initModality(Modality.WindowModal)
+    var theResult: Int = Int.MinValue
+    dialog.setTitle("Promotion piece")
+    dialog.setResizable(false)
 
+    val queenUrl = if (toPlay == Chess.WHITE) "chess_ql.png" else "chess_qd.png"
+    val rookUrl = if (toPlay == Chess.WHITE) "chess_rl.png" else "chess_rd.png"
+    val bishopUrl = if (toPlay == Chess.WHITE) "chess_bl.png" else "chess_bd.png"
+    val knightUrl = if (toPlay == Chess.WHITE) "chess_nl.png" else "chess_nd.png"
+
+    val queenImage = new ImageView(new Image(getClass.getResource(queenUrl).toExternalForm))
+    val rookImage = new ImageView(new Image(getClass.getResource(rookUrl).toExternalForm))
+    val bishopImage = new ImageView(new Image(getClass.getResource(bishopUrl).toExternalForm))
+    val knightImage = new ImageView(new Image(getClass.getResource(knightUrl).toExternalForm))
+
+    val buttonQueen = new Button {
+        graphic = queenImage
+      onAction = { (event) =>
+        theResult = Chess.QUEEN
+        dialog.close()
+      }
+    }
+    val buttonRook = new Button {
+      graphic = rookImage
+      onAction = { (event) =>
+        theResult = Chess.ROOK
+        dialog.close()
+      }
+    }
+    val buttonBishop = new Button {
+      graphic = bishopImage
+      onAction = { (event) =>
+        theResult = Chess.BISHOP
+        dialog.close()
+      }
+    }
+    val buttonKnight = new Button {
+      graphic = knightImage
+      onAction = { (event) =>
+        theResult = Chess.KNIGHT
+        dialog.close()
+      }
+    }
+
+    val hbox = new HBox(buttonQueen, buttonRook, buttonBishop, buttonKnight)
+    val label = new Label("Choose your promotion piece")
+    val vbox = new VBox(label, hbox)
+
+    dialog.setScene(new Scene(vbox))
+
+    dialog.showAndWait()
+    validatePromotionMove(theResult)
   }
 
   update()
