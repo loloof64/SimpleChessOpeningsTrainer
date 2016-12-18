@@ -17,12 +17,14 @@
   */
 package com.loloof64.scala.simple_chess_openings_trainer
 
-import java.awt.{Color, Dimension, Font, Graphics}
+import java.awt.event.{MouseAdapter, MouseEvent, MouseMotionAdapter}
+import java.awt._
 import javax.imageio.ImageIO
-import javax.swing.JPanel
+import javax.swing._
 
 import chesspresso.Chess
 import chesspresso.game.Game
+import chesspresso.move.{IllegalMoveException, Move}
 
 class BoardPane(val cellSize: Int) extends JPanel{
 
@@ -45,13 +47,17 @@ class BoardPane(val cellSize: Int) extends JPanel{
 
   private def drawCells(g: Graphics): Unit = {
     for {
-      row <- 0 until 8
-      col <- 0 until 8
-      isWhite = (row+col)%2 != 0
+      rank <- 0 until 8
+      file <- 0 until 8
+      isWhite = (rank+file)%2 != 0
       color = if (isWhite) 0xffff66 else 0x4d1a00
-      absCoords = cellCoordsToAbsoluteCoords((col, row))
+      highlightColor = 0x009900
+      absCoords = cellCoordsToAbsoluteCoords((file, rank))
     } {
-      g.setColor(new Color(color))
+      g.setColor(new Color(dragStartCoord match {
+        case Some(startCell) => if (startCell == (file, rank)) highlightColor else color
+        case None => color
+      }))
       g.fillRect(absCoords._1, absCoords._2, cellSize, cellSize)
     }
   }
@@ -88,31 +94,20 @@ class BoardPane(val cellSize: Int) extends JPanel{
 
   private def drawPieces(g: Graphics): Unit = {
     def drawAPiece(abs:Int, ord:Int, piece: Int) = {
-      val pictureRef = piece match {
-        case Chess.WHITE_PAWN => "/chess_pl.png"
-        case Chess.WHITE_KNIGHT => "/chess_nl.png"
-        case Chess.WHITE_BISHOP => "/chess_bl.png"
-        case Chess.WHITE_ROOK => "/chess_rl.png"
-        case Chess.WHITE_QUEEN => "/chess_ql.png"
-        case Chess.WHITE_KING => "/chess_kl.png"
-
-        case Chess.BLACK_PAWN => "/chess_pd.png"
-        case Chess.BLACK_KNIGHT => "/chess_nd.png"
-        case Chess.BLACK_BISHOP => "/chess_bd.png"
-        case Chess.BLACK_ROOK => "/chess_rd.png"
-        case Chess.BLACK_QUEEN => "/chess_qd.png"
-        case Chess.BLACK_KING => "/chess_kd.png"
-      }
-      g.drawImage(ImageIO.read(getClass.getResourceAsStream(pictureRef)), abs, ord, cellSize, cellSize, null)
+      g.drawImage(ImageIO.read(getClass.getResourceAsStream(pieceToPictureRef(piece))), abs, ord, cellSize, cellSize, null)
     }
 
     for {
-      row <- 0 until 8
-      col <- 0 until 8
-      piece = relatedGame.getPosition.getStone(row*8 + col)
-    } if (piece != Chess.NO_PIECE) {
-      val (abs, ord) = cellCoordsToAbsoluteCoords((col, row))
-      drawAPiece(abs, ord, piece)
+      rank <- 0 until 8
+      file <- 0 until 8
+      piece = relatedGame.getPosition.getStone(rank*8 + file)
+    } if (piece != Chess.NO_STONE) {
+      val (abs, ord) = cellCoordsToAbsoluteCoords((file, rank))
+      dragStartCoord match {
+        case Some(startCell) => if (startCell != (file, rank)) drawAPiece(abs, ord, piece)
+        case None => drawAPiece(abs, ord, piece)
+      }
+
     }
   }
 
@@ -121,7 +116,201 @@ class BoardPane(val cellSize: Int) extends JPanel{
     else ((cellSize * (0.5+cell._1)).toInt, (cellSize * (7.5-cell._2)).toInt)
   }
 
+  private def absoluteCoordsToCellCoords(absCoords: (Int, Int)) : (Int, Int) = {
+    if (reversed) (7 - ((absCoords._1 - cellSize*0.5)/cellSize).toInt, ((absCoords._2 - cellSize*0.5)/cellSize).toInt)
+    else (((absCoords._1 - cellSize*0.5)/cellSize).toInt, 7 - ((absCoords._2 - cellSize*0.5)/cellSize).toInt)
+  }
+
+  def validatePromotion(piece: Short) = {
+    pendingPromotionInfo match {
+      case Some((sqiFrom, sqiTo, isCapturing)) =>
+        val move = Move.getPawnMove(sqiFrom, sqiTo, isCapturing, piece)
+        pendingPromotionInfo = None
+        relatedGame.getPosition.doMove(move)
+      case None =>
+    }
+  }
+
+  private def askForPromotionMove(toPlay: Int) = {
+    val dialog = new JDialog(SwingUtilities.getWindowAncestor(this).asInstanceOf[JFrame], true)
+    dialog.setTitle("Promotion piece")
+
+    val queenImage = ImageIO.read(getClass.getResourceAsStream(pieceToPictureRef(if (toPlay == Chess.BLACK) Chess.BLACK_QUEEN else Chess.WHITE_QUEEN)))
+    val rookImage = ImageIO.read(getClass.getResourceAsStream(pieceToPictureRef(if (toPlay == Chess.BLACK) Chess.BLACK_ROOK else Chess.WHITE_ROOK)))
+    val bishopImage = ImageIO.read(getClass.getResourceAsStream(pieceToPictureRef(if (toPlay == Chess.BLACK) Chess.BLACK_BISHOP else Chess.WHITE_BISHOP)))
+    val knightImage = ImageIO.read(getClass.getResourceAsStream(pieceToPictureRef(if (toPlay == Chess.BLACK) Chess.BLACK_KNIGHT else Chess.WHITE_KNIGHT)))
+
+    val queenButton = new JButton(new ImageIcon(queenImage))
+    val rookButton = new JButton(new ImageIcon(rookImage))
+    val bishopButton = new JButton(new ImageIcon(bishopImage))
+    val knightButton = new JButton(new ImageIcon(knightImage))
+
+    queenButton.addActionListener{ (event) => validatePromotion(Chess.QUEEN); dialog.setVisible(false) }
+    rookButton.addActionListener { (event) => validatePromotion(Chess.ROOK); dialog.setVisible(false) }
+    bishopButton.addActionListener { (event) => validatePromotion(Chess.BISHOP); dialog.setVisible(false) }
+    knightButton.addActionListener { (event) => validatePromotion(Chess.KNIGHT); dialog.setVisible(false) }
+
+    val buttons = new JPanel()
+    buttons.setLayout(new BoxLayout(buttons, BoxLayout.LINE_AXIS))
+    buttons.add(queenButton)
+    buttons.add(rookButton)
+    buttons.add(bishopButton)
+    buttons.add(knightButton)
+
+    val components = new JPanel()
+    components.setLayout(new BoxLayout(components, BoxLayout.PAGE_AXIS))
+    components.add(new JLabel("Choose your promotion piece"))
+    components.add(buttons)
+
+
+    dialog.getContentPane.add(components)
+    dialog.pack()
+    dialog.setVisible(true)
+  }
+
+  private val theMouseListener = new MouseAdapter {
+
+    override def mousePressed(e: MouseEvent): Unit = {
+      val (file, rank) = absoluteCoordsToCellCoords((e.getX, e.getY))
+      val inBounds = (0 until 8).contains(file) && (0 until 8).contains(rank)
+      val piece = relatedGame.getPosition.getStone(file + 8*rank)
+      if (inBounds && !dragStarted && piece != Chess.NO_STONE) {
+        draggedPiece = Some(piece)
+        dragStartCoord = Some((file, rank))
+
+        val toolkit = Toolkit.getDefaultToolkit
+        val image = ImageIO.read(getClass.getResourceAsStream(pieceToPictureRef(piece)))
+        val cursor = toolkit.createCustomCursor(image.getScaledInstance(32, 32, Image.SCALE_DEFAULT), new Point(0,0), "piece")
+
+        oldCursor = getCursor
+        setCursor(cursor)
+
+        dragStarted = true
+        repaint()
+      }
+    }
+
+    override def mouseReleased(e: MouseEvent): Unit = {
+      val (file, rank) = absoluteCoordsToCellCoords((e.getX, e.getY))
+      val inBounds = (0 until 8).contains(file) && (0 until 8).contains(rank)
+
+      if (inBounds && dragStarted) {
+        try {
+          val move = validateMove(dragStartCoord.get._1 +8*dragStartCoord.get._2, file + 8*rank)
+          relatedGame.getPosition.doMove(move)
+        } catch {
+          case _:IllegalMoveException =>
+          case _:WaitingForPromotionPieceChooseException => askForPromotionMove(relatedGame.getPosition.getToPlay)
+        }
+        dragStartCoord = None
+        draggedPiece = None
+        setCursor(oldCursor)
+
+        dragStarted = false
+        repaint()
+      }
+    }
+  }
+
+  private val theMouseMotionListener = new MouseMotionAdapter {
+    override def mouseDragged(e: MouseEvent): Unit = {
+      repaint()
+    }
+  }
+
+  private def pieceToPictureRef(piece: Int) : String = {
+    piece match {
+      case Chess.WHITE_PAWN => "/chess_pl.png"
+      case Chess.WHITE_KNIGHT => "/chess_nl.png"
+      case Chess.WHITE_BISHOP => "/chess_bl.png"
+      case Chess.WHITE_ROOK => "/chess_rl.png"
+      case Chess.WHITE_QUEEN => "/chess_ql.png"
+      case Chess.WHITE_KING => "/chess_kl.png"
+
+      case Chess.BLACK_PAWN => "/chess_pd.png"
+      case Chess.BLACK_KNIGHT => "/chess_nd.png"
+      case Chess.BLACK_BISHOP => "/chess_bd.png"
+      case Chess.BLACK_ROOK => "/chess_rd.png"
+      case Chess.BLACK_QUEEN => "/chess_qd.png"
+      case Chess.BLACK_KING => "/chess_kd.png"
+    }
+  }
+
+  /**
+    *Taken from the ChessCraft project : https://github.com/desht/ChessCraft (under GPLv3)
+		*Translated into Scala and slightly modified by loloof64
+ *
+ * Check if the move is really allowed.  Also account for special cases:
+    * castling, en passant, pawn promotion
+ *
+    * @param sqiFrom - Int - from square index
+    * @param sqiTo - Int - to square index
+    * @return Short - move, if allowed
+    * @throws IllegalMoveException if not allowed
+    * @throws WaitingForPromotionPieceChooseException if user must choose promotion piece before
+    */
+  private def validateMove(sqiFrom: Int, sqiTo: Int) : Short = {
+    import scala.collection.BitSet
+
+    val relatedPosition = relatedGame.getPosition
+
+    val toPlay = relatedPosition.getToPlay
+    val availableShortCastle = (BitSet(relatedPosition.getCastles) & (BitSet(Move.WHITE_SHORT_CASTLE) | BitSet(Move.BLACK_SHORT_CASTLE))).isEmpty
+    val availableLongCastle = (BitSet(relatedPosition.getCastles) & (BitSet(Move.WHITE_LONG_CASTLE) | BitSet(Move.BLACK_LONG_CASTLE))).isEmpty
+    val isCapturing = relatedPosition.getPiece(sqiTo) != Chess.NO_PIECE
+
+    val newMove: Short =
+      if (relatedPosition.getPiece(sqiFrom) == Chess.KING) {
+        // Castling?
+        if (availableShortCastle && (sqiFrom == Chess.E1 && sqiTo == Chess.G1 || sqiFrom == Chess.E8 && sqiTo == Chess.G8)) {
+          Move.getShortCastle(toPlay)
+        }
+        else if (availableLongCastle && (sqiFrom == Chess.E1 && sqiTo == Chess.C1 || sqiFrom == Chess.E8 && sqiTo == Chess.C8)) {
+          Move.getLongCastle(toPlay)
+        }
+        else Move.getRegularMove(sqiFrom, sqiTo, isCapturing)
+      }
+      else if (relatedPosition.getPiece(sqiFrom) == Chess.PAWN
+        && (Chess.sqiToRow(sqiTo) == 7 || Chess.sqiToRow(sqiTo) == 0)) {
+        // Promotion?
+
+        pendingPromotionInfo = Some((sqiFrom, sqiTo, isCapturing))
+        throw new WaitingForPromotionPieceChooseException
+      }
+      else if (relatedPosition.getPiece(sqiFrom) == Chess.PAWN && relatedPosition.getPiece(sqiTo) == Chess.NO_PIECE) {
+        // En passant?
+        val toCol = Chess.sqiToCol(sqiTo)
+        val fromCol = Chess.sqiToCol(sqiFrom)
+        if ((toCol == fromCol - 1 || toCol == fromCol + 1)
+          && (Chess.sqiToRow(sqiFrom) == 4 && Chess.sqiToRow(sqiTo) == 5 || Chess.sqiToRow(sqiFrom) == 3
+          && Chess.sqiToRow(sqiTo) == 2)) {
+          Move.getEPMove(sqiFrom, sqiTo)
+        }
+        else Move.getRegularMove(sqiFrom, sqiTo, isCapturing)
+      } else Move.getRegularMove(sqiFrom, sqiTo, isCapturing)
+
+    pendingPromotionInfo = None
+
+    if (relatedPosition.getAllMoves.contains(newMove)) newMove
+    else throw new IllegalMoveException("")
+  }
+
+
+
+  addMouseListener(theMouseListener)
+  addMouseMotionListener(theMouseMotionListener)
+
+  private var dragStarted = false
+  private var draggedPiece : Option[Int] = None
+  private var dragStartCoord : Option[(Int, Int)] = None
+  private var oldCursor:Cursor = _
+
   private var reversed = false
   private var relatedGame = new Game()
 
+  private var pendingPromotionInfo : Option[(Int, Int, Boolean)] = None
+
 }
+
+class WaitingForPromotionPieceChooseException extends Exception
+class NotAPromotionMoveException extends Exception
