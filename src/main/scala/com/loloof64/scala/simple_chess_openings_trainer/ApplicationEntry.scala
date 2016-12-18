@@ -15,21 +15,14 @@
   *You should have received a copy of the GNU General Public License
   *along with this program.  If not, see <http://www.gnu.org/licenses/>.
   */
-import chesspresso.Chess
+package com.loloof64.scala.simple_chess_openings_trainer
 
-import scalafx.application.JFXApp
+import javax.swing.JFrame
 
-object ApplicationEntry extends JFXApp {
-
-  val sceneInst = new BoardScene(50)
-
-  stage = new JFXApp.PrimaryStage {
-    title.value = "Simple chess openings trainer"
-    width = sceneInst.dimension
-    height = sceneInst.dimension + 40
-    scene = sceneInst
-  }
-
-  sceneInst.openFile()
-
+object ApplicationEntry extends App {
+  val frame = new JFrame("Simple chess openings trainer")
+  frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE)
+  frame.getContentPane.add(new BoardPane(50))
+  frame.pack()
+  frame.setVisible(true)
 }

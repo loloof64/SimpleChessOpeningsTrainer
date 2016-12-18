@@ -45,36 +45,41 @@ class BoardCanvas(cellSize: Int)  extends Canvas(cellSize * 9, cellSize * 9) {
   private val animXProperty = new SimpleDoubleProperty()
   private val animYProperty = new SimpleDoubleProperty()
 
-  private def makeComputerPlay() = {
-    val move = relatedGame.getNextMove
-    val fromCell = (move.getFromSqi % 8, move.getFromSqi / 8)
-    val toCell = (move.getToSqi % 8, move.getToSqi / 8)
+  private var playerMove:Int = Move.ILLEGAL_MOVE
 
-    val fromCoords = cellCoordsToAbsoluteCoords(fromCell)
-    val toCoords = cellCoordsToAbsoluteCoords(toCell)
+  private def makeComputerPlay() : Unit = {
+    if (relatedGame.hasNextMove) {
+      val move = relatedGame.getNextMove
+      val fromCell = (move.getFromSqi % 8, move.getFromSqi / 8)
+      val toCell = (move.getToSqi % 8, move.getToSqi / 8)
 
-    val timeline = Timeline(Seq(
-      KeyFrame(Duration(0), values = Set(KeyValue(animXProperty, fromCoords._1), KeyValue(animYProperty, fromCoords._2))),
-      KeyFrame(Duration(800), values = Set(KeyValue(animXProperty, toCoords._1), KeyValue(animYProperty, toCoords._2)))
-    ))
+      val fromCoords = cellCoordsToAbsoluteCoords(fromCell)
+      val toCoords = cellCoordsToAbsoluteCoords(toCell)
 
-    val timer = AnimationTimer { (now) =>
-      update()
+      val timeline = Timeline(Seq(
+        KeyFrame(Duration(0), values = Set(KeyValue(animXProperty, fromCoords._1), KeyValue(animYProperty, fromCoords._2))),
+        KeyFrame(Duration(800), values = Set(KeyValue(animXProperty, toCoords._1), KeyValue(animYProperty, toCoords._2)))
+      ))
+
+      val timer = AnimationTimer { (now) =>
+        update()
+      }
+
+      animationStartCell = Some(fromCell)
+      animationMovedPiece = Some(relatedGame.getPosition.getStone(fromCell._1 + 8*fromCell._2))
+
+      timeline.setOnFinished { (event) =>
+        animationStartCell = None
+        animationMovedPiece = None
+        timer.stop()
+        relatedGame.goForward()
+        update()
+        activateDndCallbacks()
+      }
+
+      timer.start()
+      timeline.play()
     }
-
-    animationStartCell = Some(fromCell)
-    animationMovedPiece = Some(relatedGame.getPosition.getStone(fromCell._1 + 8*fromCell._2))
-
-    timeline.setOnFinished { (event) =>
-      animationStartCell = None
-      animationMovedPiece = None
-      timer.stop()
-      relatedGame.getPosition.doMove(move)
-      update()
-    }
-
-    timer.start()
-    timeline.play()
   }
 
   private def cellCoordsToAbsoluteCoords(cell: (Int, Int)) = {
@@ -105,15 +110,13 @@ class BoardCanvas(cellSize: Int)  extends Canvas(cellSize * 9, cellSize * 9) {
 
     val buttonWhite = new ButtonType("White")
     val buttonBlack = new ButtonType("Black")
-    val buttonNobody = new ButtonType("Nobody")
 
-    dialog.getButtonTypes.setAll(buttonWhite, buttonBlack, buttonNobody)
+    dialog.getButtonTypes.setAll(buttonWhite, buttonBlack)
     val result = dialog.showAndWait()
 
     this.playerColor = result.get match {
       case `buttonWhite` => Chess.WHITE
       case `buttonBlack` => Chess.BLACK
-      case `buttonNobody` => Chess.NOBODY
     }
 
     relatedGame.gotoStart()
@@ -121,6 +124,9 @@ class BoardCanvas(cellSize: Int)  extends Canvas(cellSize * 9, cellSize * 9) {
     if (this.playerColor == Chess.BLACK) reversed = true
     if (relatedGame.getPosition.getToPlay != this.playerColor){
       makeComputerPlay()
+    }
+    else {
+      activateDndCallbacks()
     }
   }
 
@@ -157,8 +163,7 @@ class BoardCanvas(cellSize: Int)  extends Canvas(cellSize * 9, cellSize * 9) {
 
       val success = if (eventInBounds) {
         if (dragBoard.hasContent(BoardCanvas.DataFormat)) try {
-          val realMove = validateMove(startFile + 8 * startRank, cellX + 8 * cellY)
-          relatedGame.getPosition.doMove(realMove)
+          validateMove(startFile + 8 * startRank, cellX + 8 * cellY)
           true
         } catch {
           case _: IllegalMoveException => if (startFile != cellX || startRank != cellY) {
@@ -327,7 +332,7 @@ class BoardCanvas(cellSize: Int)  extends Canvas(cellSize * 9, cellSize * 9) {
     * @throws IllegalMoveException if not allowed
     * @throws WaitingForPromotionPieceChooseException if user must choose promotion piece before
     */
-  private def validateMove(sqiFrom: Int, sqiTo: Int) : Short = {
+  private def validateMove(sqiFrom: Int, sqiTo: Int) : Unit = {
     import scala.collection.BitSet
 
     val relatedPosition = relatedGame.getPosition
@@ -369,17 +374,36 @@ class BoardCanvas(cellSize: Int)  extends Canvas(cellSize * 9, cellSize * 9) {
 
     pendingPromotionInfo = None
 
-    if (relatedPosition.getAllMoves.contains(newMove)) newMove
+    if (relatedPosition.getAllMoves.contains(newMove)) {
+      playerMove = newMove
+      answerToPlayerMove()
+    }
     else throw new IllegalMoveException("")
+  }
+
+  def answerToPlayerMove(): Unit = {
+    val isAnExpectedMove = relatedGame.getNextMoves.contains(playerMove)
+    if (! isAnExpectedMove) {
+      val alert = new Alert(AlertType.Error)
+      alert.setTitle("Wrong move")
+      alert.setContentText("Not an expected move !")
+      alert.showAndWait()
+    }
+    relatedGame.goForward()
+    removeDndCallbacks()
+    update()
+
+    if (!relatedGame.getPosition.isTerminal) {
+      makeComputerPlay()
+    }
   }
 
   private def validatePromotionMove(pieceType : Int) : Unit = {
     pendingPromotionInfo match {
       case Some((sqiFrom, sqiTo, isCapturing)) =>
-        val move = Move.getPawnMove(sqiFrom, sqiTo, isCapturing, pieceType)
-        relatedGame.getPosition.doMove(move)
+        playerMove = Move.getPawnMove(sqiFrom, sqiTo, isCapturing, pieceType)
         pendingPromotionInfo = None
-        update()
+        answerToPlayerMove()
       case None =>
     }
   }
