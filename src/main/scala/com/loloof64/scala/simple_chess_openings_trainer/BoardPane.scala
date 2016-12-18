@@ -20,6 +20,7 @@ package com.loloof64.scala.simple_chess_openings_trainer
 import java.awt.event.{MouseAdapter, MouseEvent, MouseMotionAdapter}
 import java.awt._
 import java.io.{File, FileInputStream}
+import java.util.{Timer, TimerTask}
 import javax.imageio.ImageIO
 import javax.swing._
 import javax.swing.filechooser.FileNameExtensionFilter
@@ -39,6 +40,15 @@ class BoardPane(val cellSize: Int) extends JPanel{
       relatedGame = new PGNReader(stream, "game").parseGame()
       stream.close()
       relatedGame.gotoStart()
+
+      if (playerColor == Chess.BLACK) reversed = true
+      if (relatedGame.getPosition.getToPlay == playerColor) {
+        addListeners()
+      } else {
+        removeListeners()
+        makeComputerPlay()
+      }
+
       repaint()
     } catch {
       case _:CancelledFileChooserException =>
@@ -55,6 +65,71 @@ class BoardPane(val cellSize: Int) extends JPanel{
     drawCoords(g)
     drawPlayerTurn(g)
     drawPieces(g)
+  }
+
+  private def removeListeners() = {
+    removeMouseListener(theMouseListener)
+    removeMouseMotionListener(theMouseMotionListener)
+  }
+
+  private def addListeners() = {
+    addMouseListener(theMouseListener)
+    addMouseMotionListener(theMouseMotionListener)
+  }
+
+  private def makeComputerPlay() : Unit = {
+    if (relatedGame.hasNextMove) {
+      val move = relatedGame.getNextMove
+      val fromCell = (move.getFromSqi % 8, move.getFromSqi / 8)
+      val toCell = (move.getToSqi % 8, move.getToSqi / 8)
+
+      val fromCoords = cellCoordsToAbsoluteCoords(fromCell)
+      val toCoords = cellCoordsToAbsoluteCoords(toCell)
+
+      val deltas = (toCoords._1 - fromCoords._1, toCoords._2 - fromCoords._2)
+      val timeMs = 800
+
+      val startTime = System.currentTimeMillis()
+
+      val timerTask = new TimerTask {
+
+        override def run(): Unit = {
+          val elapsedTime = System.currentTimeMillis() - startTime
+          if (elapsedTime < timeMs){
+            val percent = elapsedTime * 1.0 / timeMs
+            animationPieceLocation = Some((fromCoords._1 + deltas._1 * percent).toInt, (fromCoords._2 + deltas._2 * percent).toInt)
+            SwingUtilities.invokeLater{() => repaint()}
+          }
+          else {
+            cancel()
+            manageTheAfterComputerMove()
+          }
+        }
+      }
+
+      val timer = new Timer
+      animationPieceStartCell = Some(fromCell)
+      animationPiece = Some(relatedGame.getPosition.getStone(fromCell._1 + 8*fromCell._2))
+      animationStarted = true
+      timer.scheduleAtFixedRate(timerTask, 0.toLong, 50)
+    }
+  }
+
+  private def manageTheAfterComputerMove(): Unit = {
+    animationPieceLocation = None
+    animationPiece = None
+    animationStarted = false
+
+    relatedGame.goForward()
+    repaint()
+
+    if (relatedGame.getPosition.getToPlay == playerColor){
+      addListeners()
+    }
+    else {
+      removeListeners()
+      makeComputerPlay()
+    }
   }
 
   private def getFileFromFileChooser : File = {
@@ -155,21 +230,34 @@ class BoardPane(val cellSize: Int) extends JPanel{
   }
 
   private def drawPieces(g: Graphics): Unit = {
-    def drawAPiece(abs:Int, ord:Int, piece: Int) = {
-      g.drawImage(ImageIO.read(getClass.getResourceAsStream(pieceToPictureRef(piece))), abs, ord, cellSize, cellSize, null)
+    def drawAPiece(file:Int, rank:Int, piece: Int) = {
+      val draw = (abs:Int, ord:Int) => g.drawImage(ImageIO.read(getClass.getResourceAsStream(pieceToPictureRef(piece))),
+        abs, ord, cellSize, cellSize, null)
+      if (piece != Chess.NO_STONE) {
+        val (abs, ord) = cellCoordsToAbsoluteCoords((file, rank))
+        dragStartCoord match {
+          case Some(startCell) => if (startCell != (file, rank)) draw(abs, ord)
+          case None => draw(abs, ord)
+        }
+      }
     }
 
     for {
       rank <- 0 until 8
       file <- 0 until 8
       piece = relatedGame.getPosition.getStone(rank*8 + file)
-    } if (piece != Chess.NO_STONE) {
-      val (abs, ord) = cellCoordsToAbsoluteCoords((file, rank))
-      dragStartCoord match {
-        case Some(startCell) => if (startCell != (file, rank)) drawAPiece(abs, ord, piece)
-        case None => drawAPiece(abs, ord, piece)
+    } {
+      animationPieceStartCell match {
+        case Some(startCell) => if (startCell != (file, rank)) drawAPiece(file, rank, piece)
+        case None => drawAPiece(file, rank, piece)
       }
+    }
 
+    animationPieceLocation match {
+      case Some(location) =>
+        g.drawImage(ImageIO.read(getClass.getResourceAsStream(pieceToPictureRef(animationPiece.get))),
+          location._1, location._2, cellSize, cellSize, null)
+      case None =>
     }
   }
 
@@ -359,15 +447,15 @@ class BoardPane(val cellSize: Int) extends JPanel{
     else throw new IllegalMoveException("")
   }
 
-
-
-  addMouseListener(theMouseListener)
-  addMouseMotionListener(theMouseMotionListener)
-
   private var dragStarted = false
   private var draggedPiece : Option[Int] = None
   private var dragStartCoord : Option[(Int, Int)] = None
   private var oldCursor:Cursor = _
+
+  private var animationStarted = false
+  private var animationPiece : Option[Int] = None
+  private var animationPieceLocation : Option[(Int, Int)] = None
+  private var animationPieceStartCell : Option[(Int, Int)] = None
 
   private var reversed = false
   private var playerColor = Chess.NOBODY
