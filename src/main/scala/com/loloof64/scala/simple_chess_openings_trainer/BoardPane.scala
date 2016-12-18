@@ -19,14 +19,31 @@ package com.loloof64.scala.simple_chess_openings_trainer
 
 import java.awt.event.{MouseAdapter, MouseEvent, MouseMotionAdapter}
 import java.awt._
+import java.io.{File, FileInputStream}
 import javax.imageio.ImageIO
 import javax.swing._
+import javax.swing.filechooser.FileNameExtensionFilter
 
 import chesspresso.Chess
 import chesspresso.game.Game
 import chesspresso.move.{IllegalMoveException, Move}
+import chesspresso.pgn.PGNReader
 
 class BoardPane(val cellSize: Int) extends JPanel{
+
+  def loadPgnFile() : Unit = {
+    try {
+      val file = getFileFromFileChooser
+      playerColor = askPlayerColor()
+      val stream = new FileInputStream(file)
+      relatedGame = new PGNReader(stream, "game").parseGame()
+      stream.close()
+      relatedGame.gotoStart()
+      repaint()
+    } catch {
+      case _:CancelledFileChooserException =>
+    }
+  }
 
   override def getPreferredSize: Dimension = {
     new Dimension(cellSize*9, cellSize*9)
@@ -38,6 +55,51 @@ class BoardPane(val cellSize: Int) extends JPanel{
     drawCoords(g)
     drawPlayerTurn(g)
     drawPieces(g)
+  }
+
+  private def getFileFromFileChooser : File = {
+    val fileChooser = new JFileChooser(currentChooserFolder)
+    fileChooser.setAcceptAllFileFilterUsed(false)
+    fileChooser.addChoosableFileFilter(new FileNameExtensionFilter("PGN file (*.pgn)", "pgn"))
+    val dialogResult = fileChooser.showOpenDialog(this)
+    if (dialogResult == JFileChooser.APPROVE_OPTION) {
+      currentChooserFolder = fileChooser.getCurrentDirectory
+      fileChooser.getSelectedFile
+    }
+    else throw new CancelledFileChooserException
+  }
+
+  private def askPlayerColor() : Int = {
+    val dialog = new JDialog(SwingUtilities.getWindowAncestor(this).asInstanceOf[JFrame], true)
+    dialog.setTitle("Choose your side")
+    dialog.setUndecorated(true)
+
+    var result: Int = Int.MinValue
+
+    val buttons = new JPanel()
+    buttons.setLayout(new BoxLayout(buttons, BoxLayout.LINE_AXIS))
+    val whiteButton = new JButton("White")
+    whiteButton.addActionListener{(event) => result = Chess.WHITE; dialog.setVisible(false)}
+    val blackButton = new JButton("Black")
+    blackButton.addActionListener{(event) => result = Chess.BLACK; dialog.setVisible(false)}
+    val nobodyButton = new JButton("Nobody")
+    nobodyButton.addActionListener{(event) => result = Chess.NOBODY; dialog.setVisible(false)}
+    buttons.add(whiteButton)
+    buttons.add(blackButton)
+    buttons.add(nobodyButton)
+
+    val contents = new JPanel()
+    contents.setLayout(new BoxLayout(contents, BoxLayout.PAGE_AXIS))
+    val label = new JLabel("Choose your side")
+    label.setAlignmentX(Component.CENTER_ALIGNMENT)
+    contents.add(label)
+    contents.add(buttons)
+
+    dialog.getContentPane.add(contents)
+    dialog.pack()
+    dialog.setVisible(true)
+
+    result
   }
 
   private def clearComponent(g: Graphics): Unit = {
@@ -159,7 +221,9 @@ class BoardPane(val cellSize: Int) extends JPanel{
 
     val components = new JPanel()
     components.setLayout(new BoxLayout(components, BoxLayout.PAGE_AXIS))
-    components.add(new JLabel("Choose your promotion piece"))
+    val label = new JLabel("Choose your promotion piece")
+    label.setAlignmentX(Component.CENTER_ALIGNMENT)
+    components.add(label)
     components.add(buttons)
 
 
@@ -306,11 +370,16 @@ class BoardPane(val cellSize: Int) extends JPanel{
   private var oldCursor:Cursor = _
 
   private var reversed = false
+  private var playerColor = Chess.NOBODY
   private var relatedGame = new Game()
+  relatedGame.getPosition.clear()
 
   private var pendingPromotionInfo : Option[(Int, Int, Boolean)] = None
+
+  private var currentChooserFolder: File = _
 
 }
 
 class WaitingForPromotionPieceChooseException extends Exception
 class NotAPromotionMoveException extends Exception
+class CancelledFileChooserException extends  Exception

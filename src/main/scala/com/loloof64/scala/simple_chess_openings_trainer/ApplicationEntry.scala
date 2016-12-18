@@ -17,12 +17,25 @@
   */
 package com.loloof64.scala.simple_chess_openings_trainer
 
-import javax.swing.JFrame
+import java.awt.event.KeyEvent
+import javax.swing.{JFrame, JMenu, JMenuBar, JMenuItem}
 
 object ApplicationEntry extends App {
   val frame = new JFrame("Simple chess openings trainer")
+  val boardPane = new BoardPane(50)
   frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE)
-  frame.getContentPane.add(new BoardPane(50))
-  frame.pack()
+  frame.getContentPane.add(boardPane)
   frame.setVisible(true)
+
+  val menuBar = new JMenuBar
+  val fileMenu = new JMenu("File")
+  fileMenu.setMnemonic('F')
+  val loadFileMenuItem = new JMenuItem("Load", KeyEvent.VK_L)
+  loadFileMenuItem.addActionListener { (event) => boardPane.loadPgnFile()}
+  fileMenu.add(loadFileMenuItem)
+  menuBar.add(fileMenu)
+
+  frame.setJMenuBar(menuBar)
+
+  frame.pack()
 }
