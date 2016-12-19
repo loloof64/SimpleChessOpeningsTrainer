@@ -17,8 +17,8 @@
   */
 package com.loloof64.scala.simple_chess_openings_trainer
 
+import java.awt.{BasicStroke, Color, Component, Cursor, Dimension, Font, Graphics, Graphics2D, Image, Point, Polygon, Toolkit}
 import java.awt.event.{MouseAdapter, MouseEvent, MouseMotionAdapter}
-import java.awt._
 import java.awt.geom.AffineTransform
 import java.io.{File, FileInputStream, FileNotFoundException, FileOutputStream}
 import java.util.{Properties, Timer, TimerTask}
@@ -110,22 +110,44 @@ class BoardPane(val cellSize: Int) extends JPanel{
 
   private def makeComputerPlay() : Unit = {
     if (relatedGame.hasNextMove) {
-      val move = relatedGame.getNextMove
+
+      val linesMoves = getNextLinesMoves
+      val selectedLineIndex = random.nextInt(linesMoves.size)
+
+      val move = linesMoves(selectedLineIndex)
       val fromCell = (move.getFromSqi % 8, move.getFromSqi / 8)
       val toCell = (move.getToSqi % 8, move.getToSqi / 8)
       animatePiece(fromCell, toCell, (startFile, startRank, endFile, endRank) => {
-        manageTheAfterComputerMove(startFile, startRank, endFile, endRank)
+        manageTheAfterComputerMove(startFile, startRank, endFile, endRank, selectedLineIndex)
       })
     }
     else showEndOfVariationDialog()
+  }
+
+  private def getNextLinesMoves : List[Move] = {
+    var linesMoves = List[Move]()
+    var lineIndex = 0
+    var loopGoesOn = true
+    while (loopGoesOn){
+      try {
+        val move = relatedGame.getNextMove(lineIndex)
+        move.getMovingPiece
+        linesMoves = linesMoves :+ move
+        lineIndex += 1
+      }
+      catch {
+        case _:NullPointerException => loopGoesOn = false
+      }
+    }
+    linesMoves
   }
 
   private def showEndOfVariationDialog() : Unit = {
     JOptionPane.showMessageDialog(this, "End of variation")
   }
 
-  private def manageTheAfterComputerMove(oldStartFile: Int, oldStartRank: Int, oldEndFile: Int, oldEndRank: Int): Unit = {
-    relatedGame.goForward()
+  private def manageTheAfterComputerMove(oldStartFile: Int, oldStartRank: Int, oldEndFile: Int, oldEndRank: Int, selectedLineIndex: Int): Unit = {
+    relatedGame.goForward(selectedLineIndex)
     repaint()
 
     if (relatedGame.getPosition.getToPlay == playerColor){
@@ -430,22 +452,25 @@ class BoardPane(val cellSize: Int) extends JPanel{
 
   private def giveAnswerToPlayerMove(startCell : (Int, Int), endCell : (Int, Int), move: Short) : Unit = {
     removeListeners()
-    val isAnExpectedMove = move == relatedGame.getNextShortMove()
+    val nextLinesMoves = getNextLinesMoves.map{_.getShortMoveDesc}
+    val isAnExpectedMove = nextLinesMoves.contains(move)
     if (!isAnExpectedMove){
       JOptionPane.showMessageDialog(this, "Wrong move !", "wrong move", JOptionPane.ERROR_MESSAGE)
-      val rightMove = relatedGame.getNextMove
+      val rightMoveLineIndex = random.nextInt(nextLinesMoves.size)
+      val rightMove = relatedGame.getNextMove(rightMoveLineIndex)
       val rightMoveStart = rightMove.getFromSqi
       val rightMoveEnd = rightMove.getToSqi
       val startCell = (rightMoveStart%8, rightMoveStart/8)
       val endCell = (rightMoveEnd%8, rightMoveEnd/8)
       animatePiece(startCell, endCell, (_,_,_,_) => {
-        relatedGame.goForward()
+        relatedGame.goForward(rightMoveLineIndex)
         repaint()
         makeComputerPlay()
       })
     }
     else {
-      relatedGame.goForward()
+      val matchingLine = nextLinesMoves.indexOf(move)
+      relatedGame.goForward(matchingLine)
       repaint()
       makeComputerPlay()
     }
@@ -599,6 +624,7 @@ class BoardPane(val cellSize: Int) extends JPanel{
 
   private var currentChooserFolder: File = _
 
+  private val random = scala.util.Random
 }
 
 object BoardPane {
