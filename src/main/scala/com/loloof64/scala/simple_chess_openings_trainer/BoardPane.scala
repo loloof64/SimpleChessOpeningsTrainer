@@ -318,7 +318,7 @@ class BoardPane(val cellSize: Int) extends JPanel{
 
         val tx = new AffineTransform()
         tx.setToIdentity()
-        val angle = Math.atan2(absEnd - absStart, ordEnd - ordStart)
+        val angle = -Math.atan2(absEnd - absStart, ordEnd - ordStart)
         tx.translate(absEnd, ordEnd)
         tx.rotate(angle)
 
