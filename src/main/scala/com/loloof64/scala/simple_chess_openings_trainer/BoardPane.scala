@@ -117,6 +117,11 @@ class BoardPane(val cellSize: Int) extends JPanel{
         manageTheAfterComputerMove(startFile, startRank, endFile, endRank)
       })
     }
+    else showEndOfVariationDialog()
+  }
+
+  private def showEndOfVariationDialog() : Unit = {
+    JOptionPane.showMessageDialog(this, "End of variation")
   }
 
   private def manageTheAfterComputerMove(oldStartFile: Int, oldStartRank: Int, oldEndFile: Int, oldEndRank: Int): Unit = {
@@ -124,9 +129,12 @@ class BoardPane(val cellSize: Int) extends JPanel{
     repaint()
 
     if (relatedGame.getPosition.getToPlay == playerColor){
-      moveToHighlight = Some(oldStartFile, oldStartRank, oldEndFile, oldEndRank)
-      repaint()
-      addListeners()
+      if (relatedGame.hasNextMove) {
+        moveToHighlight = Some(oldStartFile, oldStartRank, oldEndFile, oldEndRank)
+        repaint()
+        addListeners()
+      }
+      else showEndOfVariationDialog()
     }
     else {
       removeListeners()
