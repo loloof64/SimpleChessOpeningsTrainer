@@ -113,57 +113,18 @@ class BoardPane(val cellSize: Int) extends JPanel{
       val move = relatedGame.getNextMove
       val fromCell = (move.getFromSqi % 8, move.getFromSqi / 8)
       val toCell = (move.getToSqi % 8, move.getToSqi / 8)
-
-      val fromCoords = cellCoordsToAbsoluteCoords(fromCell)
-      val toCoords = cellCoordsToAbsoluteCoords(toCell)
-
-      val deltas = (toCoords._1 - fromCoords._1, toCoords._2 - fromCoords._2)
-      val timeMs = 800
-
-      val startTime = System.currentTimeMillis()
-
-      val timerTask = new TimerTask {
-
-        override def run(): Unit = {
-          val elapsedTime = System.currentTimeMillis() - startTime
-          if (elapsedTime < timeMs){
-            val percent = elapsedTime * 1.0 / timeMs
-            animationPieceLocation = Some((fromCoords._1 + deltas._1 * percent).toInt, (fromCoords._2 + deltas._2 * percent).toInt)
-            SwingUtilities.invokeLater{() => repaint()}
-          }
-          else {
-            cancel()
-            manageTheAfterComputerMove()
-          }
-        }
-      }
-
-      val timer = new Timer
-      animationPieceStartCell = Some(fromCell)
-      animationPieceEndCell = Some(toCell)
-      animationPiece = Some(relatedGame.getPosition.getStone(fromCell._1 + 8*fromCell._2))
-      animationStarted = true
-      timer.scheduleAtFixedRate(timerTask, 0.toLong, 50)
+      animatePiece(fromCell, toCell, (startFile, startRank, endFile, endRank) => {
+        manageTheAfterComputerMove(startFile, startRank, endFile, endRank)
+      })
     }
   }
 
-  private def manageTheAfterComputerMove(): Unit = {
-
-    val oldAnimationPieceStartCell = animationPieceStartCell
-    val oldAnimationPieceEndCell = animationPieceEndCell
-
-    animationPieceLocation = None
-    animationPieceStartCell = None
-    animationPieceEndCell = None
-    animationPiece = None
-    animationStarted = false
-
+  private def manageTheAfterComputerMove(oldStartFile: Int, oldStartRank: Int, oldEndFile: Int, oldEndRank: Int): Unit = {
     relatedGame.goForward()
     repaint()
 
     if (relatedGame.getPosition.getToPlay == playerColor){
-      moveToHighlight = Some(oldAnimationPieceStartCell.get._1, oldAnimationPieceStartCell.get._2,
-        oldAnimationPieceEndCell.get._1, oldAnimationPieceEndCell.get._2)
+      moveToHighlight = Some(oldStartFile, oldStartRank, oldEndFile, oldEndRank)
       repaint()
       addListeners()
     }
@@ -350,14 +311,17 @@ class BoardPane(val cellSize: Int) extends JPanel{
     else (((absCoords._1 - cellSize*0.5)/cellSize).toInt, 7 - ((absCoords._2 - cellSize*0.5)/cellSize).toInt)
   }
 
-  def validatePromotion(piece: Short) = {
+  private def validatePromotion(piece: Short) = {
     pendingPromotionInfo match {
       case Some((sqiFrom, sqiTo, isCapturing)) =>
-        val move = Move.getPawnMove(sqiFrom, sqiTo, isCapturing, piece)
         pendingPromotionInfo = None
         moveToHighlight = None
-        relatedGame.getPosition.doMove(move)
         repaint()
+        val startCell = (sqiFrom%8, sqiFrom/8)
+        val endCell = (sqiTo%8, sqiTo/8)
+        if (relatedGame.hasNextMove) {
+          giveAnswerToPlayerMove(startCell, endCell, Move.getPawnMove(sqiFrom, sqiTo, isCapturing, piece))
+        }
       case None =>
     }
   }
@@ -429,10 +393,13 @@ class BoardPane(val cellSize: Int) extends JPanel{
 
       if (inBounds && dragStarted) {
         try {
-          val move = validateMove(dragStartCoord.get._1 +8*dragStartCoord.get._2, file + 8*rank)
-          relatedGame.getPosition.doMove(move)
           moveToHighlight = None
           repaint()
+          val move = validateMove(dragStartCoord.get._1 +8*dragStartCoord.get._2, file + 8*rank)
+          val startCell = (dragStartCoord.get._1, dragStartCoord.get._2)
+          if (relatedGame.hasNextMove){
+            giveAnswerToPlayerMove(startCell, (file, rank), move)
+          }
         } catch {
           case _:IllegalMoveException =>
           case _:WaitingForPromotionPieceChooseException => askForPromotionMove(relatedGame.getPosition.getToPlay)
@@ -450,6 +417,76 @@ class BoardPane(val cellSize: Int) extends JPanel{
   private val theMouseMotionListener = new MouseMotionAdapter {
     override def mouseDragged(e: MouseEvent): Unit = {
       repaint()
+    }
+  }
+
+  private def giveAnswerToPlayerMove(startCell : (Int, Int), endCell : (Int, Int), move: Short) : Unit = {
+    removeListeners()
+    val isAnExpectedMove = move == relatedGame.getNextShortMove()
+    if (!isAnExpectedMove){
+      JOptionPane.showMessageDialog(this, "Wrong move !", "wrong move", JOptionPane.ERROR_MESSAGE)
+      val rightMove = relatedGame.getNextMove
+      val rightMoveStart = rightMove.getFromSqi
+      val rightMoveEnd = rightMove.getToSqi
+      val startCell = (rightMoveStart%8, rightMoveStart/8)
+      val endCell = (rightMoveEnd%8, rightMoveEnd/8)
+      animatePiece(startCell, endCell, (_,_,_,_) => {
+        relatedGame.goForward()
+        repaint()
+        makeComputerPlay()
+      })
+    }
+    else {
+      relatedGame.goForward()
+      repaint()
+      makeComputerPlay()
+    }
+  }
+
+  private def animatePiece(startCell : (Int, Int), endCell : (Int, Int), terminationCallback : (Int, Int, Int, Int) => Unit): Unit = {
+    if (! animationStarted){
+      val fromCoords = cellCoordsToAbsoluteCoords(startCell)
+      val toCoords = cellCoordsToAbsoluteCoords(endCell)
+
+      val deltas = (toCoords._1 - fromCoords._1, toCoords._2 - fromCoords._2)
+      val timeMs = 800
+
+      val startTime = System.currentTimeMillis()
+
+      val timerTask = new TimerTask {
+
+        override def run(): Unit = {
+          val elapsedTime = System.currentTimeMillis() - startTime
+          if (elapsedTime < timeMs){
+            val percent = elapsedTime * 1.0 / timeMs
+            animationPieceLocation = Some((fromCoords._1 + deltas._1 * percent).toInt, (fromCoords._2 + deltas._2 * percent).toInt)
+            SwingUtilities.invokeLater{() => repaint()}
+          }
+          else {
+            cancel()
+
+            val oldMoveStartFile = animationPieceStartCell.get._1
+            val oldMoveStartRank = animationPieceStartCell.get._2
+            val oldMoveEndFile = animationPieceEndCell.get._1
+            val oldMoveEndRank = animationPieceEndCell.get._2
+
+            animationPieceLocation = None
+            animationPieceStartCell = None
+            animationPieceEndCell = None
+            animationPiece = None
+            animationStarted = false
+
+            terminationCallback(oldMoveStartFile, oldMoveStartRank, oldMoveEndFile, oldMoveEndRank)
+          }
+        }
+      }
+
+      val timer = new Timer
+      animationPieceStartCell = Some(startCell)
+      animationPieceEndCell = Some(endCell)
+      animationPiece = Some(relatedGame.getPosition.getStone(startCell._1 + 8*startCell._2))
+      animationStarted = true
+      timer.scheduleAtFixedRate(timerTask, 0.toLong, 50)
     }
   }
 
