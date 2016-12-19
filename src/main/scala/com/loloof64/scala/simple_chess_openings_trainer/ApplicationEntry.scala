@@ -25,7 +25,6 @@ object ApplicationEntry extends App {
   val boardPane = new BoardPane(50)
   frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE)
   frame.getContentPane.add(boardPane)
-  frame.setVisible(true)
 
   val menuBar = new JMenuBar
   val fileMenu = new JMenu("File")
@@ -38,4 +37,7 @@ object ApplicationEntry extends App {
   frame.setJMenuBar(menuBar)
 
   frame.pack()
+  frame.setLocationRelativeTo(null)
+
+  frame.setVisible(true)
 }

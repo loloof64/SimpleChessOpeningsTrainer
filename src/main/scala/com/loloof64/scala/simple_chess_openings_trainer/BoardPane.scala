@@ -205,6 +205,8 @@ class BoardPane(val cellSize: Int) extends JPanel{
 
     dialog.getContentPane.add(contents)
     dialog.pack()
+
+    dialog.setLocationRelativeTo(null)
     dialog.setVisible(true)
 
     result
@@ -392,6 +394,8 @@ class BoardPane(val cellSize: Int) extends JPanel{
 
     dialog.getContentPane.add(components)
     dialog.pack()
+    dialog.setLocationRelativeTo(null)
+
     dialog.setVisible(true)
   }
 
