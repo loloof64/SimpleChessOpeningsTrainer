@@ -347,8 +347,6 @@ class BoardPane(val cellSize: Int) extends JPanel{
     pendingPromotionInfo match {
       case Some((sqiFrom, sqiTo, isCapturing)) =>
         pendingPromotionInfo = None
-        moveToHighlight = None
-        repaint()
         val startCell = (sqiFrom%8, sqiFrom/8)
         val endCell = (sqiTo%8, sqiTo/8)
         if (relatedGame.hasNextMove) {
@@ -427,8 +425,6 @@ class BoardPane(val cellSize: Int) extends JPanel{
 
       if (inBounds && dragStarted) {
         try {
-          moveToHighlight = None
-          repaint()
           val move = validateMove(dragStartCoord.get._1 +8*dragStartCoord.get._2, file + 8*rank)
           val startCell = (dragStartCoord.get._1, dragStartCoord.get._2)
           if (relatedGame.hasNextMove){
@@ -467,6 +463,7 @@ class BoardPane(val cellSize: Int) extends JPanel{
       val startCell = (rightMoveStart%8, rightMoveStart/8)
       val endCell = (rightMoveEnd%8, rightMoveEnd/8)
       animatePiece(startCell, endCell, (_,_,_,_) => {
+        moveToHighlight = None
         relatedGame.goForward(rightMoveLineIndex)
         repaint()
         makeComputerPlay()
